@@ -1,0 +1,164 @@
+<script>
+  // Controle de Interface dos Modais
+  function toggleModalPesquisa() {
+    const modal = document.getElementById('modalPesquisa');
+    modal.classList.toggle('opacity-0');
+    modal.classList.toggle('pointer-events-auto');
+    document.body.classList.toggle('modal-active');
+  }
+
+  function toggleModalNovo() {
+    const modal = document.getElementById('modalNovo');
+    modal.classList.toggle('opacity-0');
+    modal.classList.toggle('pointer-events-auto');
+    document.body.classList.toggle('modal-active');
+  }
+
+  function mostrarAlerta(titulo, mensagem, tipo = 'sucesso') {
+    const modal = document.getElementById('modalAlerta');
+    const conteudo = document.getElementById('alertaConteudo');
+    const icone = document.getElementById('alertaIcone');
+    
+    if (tipo === 'erro') {
+      icone.innerHTML = '<i class="fas fa-times fa-2xl"></i>';
+      icone.className = "mx-auto flex items-center justify-center h-20 w-20 rounded-full mb-6 bg-red-50 text-red-500";
+    } else {
+      icone.innerHTML = '<i class="fas fa-check fa-2xl"></i>';
+      icone.className = "mx-auto flex items-center justify-center h-20 w-20 rounded-full mb-6 bg-emerald-50 text-emerald-500";
+    }
+
+    document.getElementById('alertaTitulo').innerText = titulo;
+    document.getElementById('alertaMensagem').innerText = mensagem;
+    modal.classList.remove('hidden');
+    setTimeout(() => conteudo.classList.add('scale-100', 'opacity-100'), 50);
+  }
+
+  function fecharAlerta() {
+    document.getElementById('modalAlerta').classList.add('hidden');
+  }
+
+  // Inicialização da Página
+  window.onload = () => {
+    google.script.run.withSuccessHandler(total => {
+      document.getElementById('total-unid').innerText = total;
+    }).getResSummaryDashboard || google.script.run.withSuccessHandler(total => {
+      document.getElementById('total-unid').innerText = total;
+    }).getResumoDashboard();
+  };
+
+  // Comunicação Assíncrona com Back-end
+  function salvarProcedimento() {
+    const btn = document.getElementById('btnSalvar');
+    const dados = {
+      paciente: document.getElementById('novoPaciente').value,
+      material: document.getElementById('novoMaterial').value,
+      qtd: document.getElementById('novoQtd').value,
+      data: document.getElementById('novoData').value,
+      cadista: document.getElementById('novoCadista').value,
+      doutor: document.getElementById('novoDoutor').value,
+      unid: document.getElementById('novoUnid').value,
+      dente: document.getElementById('novoDente').value,
+      cor: document.getElementById('novoCor').value
+    };
+
+    if(!dados.paciente || !dados.data) {
+      return mostrarAlerta("Erro", "Paciente e Data são campos obrigatórios", "erro");
+    }
+
+    btn.disabled = true;
+    btn.innerText = "SALVANDO...";
+
+    google.script.run.withSuccessHandler((res) => {
+      if(res === true) {
+        document.getElementById('formProcedimento').reset();
+        toggleModalNovo();
+        mostrarAlerta("Sucesso", "Procedimento registrado com sucesso!");
+        
+        google.script.run.withSuccessHandler(t => {
+          document.getElementById('total-unid').innerText = t;
+        }).getResumoDashboard();
+      } else {
+        mostrarAlerta("Erro", res, "erro");
+      }
+      btn.disabled = false;
+      btn.innerText = "SALVAR PROCEDIMENTO";
+    }).salvarNovoProcedimento(dados);
+  }
+
+  function buscar() {
+    const nome = document.getElementById('inputNome').value;
+    const tabela = document.getElementById('tabela-resultados');
+
+    if(!nome.trim()) return;
+    tabela.innerHTML = "<tr><td colspan='5' class='text-center p-4 text-slate-500'>Buscando registros...</td></tr>";
+
+    google.script.run.withSuccessHandler(function(rows) {
+      tabela.innerHTML = "";
+      
+      if (!rows || rows.length === 0) {
+        tabela.innerHTML = "<tr><td colspan='5' class='text-center p-4 text-red-500 font-bold'>NENHUM DADO ENCONTRADO</td></tr>";
+        return;
+      }
+
+      rows.forEach(linha => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50 transition-colors border-b border-slate-100";
+        tr.innerHTML = `
+          <td class="px-6 py-4 text-sm font-medium text-slate-700">${linha[0] || ""}</td> 
+          <td class="px-6 py-4 text-sm text-slate-600">${linha[1] || "-"}</td>
+          <td class="px-6 py-4 text-sm font-bold text-blue-600 text-center">${linha[6] || "0"}</td>
+          <td class="px-6 py-4 text-sm text-slate-600 text-center font-bold">${linha[7] || "-"}</td> 
+          <td class="px-6 py-4 text-sm text-slate-500 text-center uppercase font-semibold">${linha[8] || "-"}</td>
+        `;
+        tabela.appendChild(tr);
+      });
+    }).buscarPacienteGlobal(nome);
+  }
+
+  function imprimirRelatorio() {
+    google.script.run.withSuccessHandler(function(dados) {
+      if (!dados || dados.length === 0) return mostrarAlerta("Erro", "Sem dados disponíveis para gerar relatório.", "erro");
+      
+      const win = window.open('', '', 'width=900,height=700');
+      let linhasHtml = '';
+      let somaTotal = 0;
+
+      dados.forEach(item => {
+        let dt = item.data instanceof Date ? item.data.toLocaleDateString('pt-BR') : item.data;
+        let unid = parseFloat(item.unidades) || 0;
+        somaTotal += unid;
+        linhasHtml += `<tr><td>${item.paciente}</td><td>${dt || '-'}</td><td>${item.material}</td><td align="center">${unid}</td></tr>`;
+      });
+
+      win.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Relatório de Produção</title>
+          <style>
+            body { font-family: sans-serif; padding: 30px; color: #334155; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: left; font-size: 13px; }
+            th { background: #f8fafc; font-weight: bold; color: #1e293b; }
+            h2 { font-size: 22px; margin-bottom: 5px; color: #0f172a; }
+            .footer { margin-top: 30px; font-weight: 800; font-size: 18px; text-align: right; border-top: 2px solid #334155; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <h2>Resumo de Produção - CAD/CAM</h2>
+          <p style="font-size: 12px; color: #64748b;">Relatório gerado automaticamente pelo sistema controlador</p>
+          <table>
+            <thead>
+              <tr><th>Paciente</th><th>Data</th><th>Material</th><th>Unidades</th></tr>
+            </thead>
+            <tbody>${linhasHtml}</tbody>
+          </table>
+          <div class="footer">TOTAL CONSOLIDADO: ${somaTotal} UNIDADES</div>
+        </body>
+        </html>
+      `);
+      win.document.close();
+      setTimeout(() => { win.print(); win.close(); }, 500);
+    }).getDadosParaRelatorio();
+  }
+</script>
